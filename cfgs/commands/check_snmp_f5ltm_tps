@@ -1,0 +1,6 @@
+# The check_snmp_f5ltm_tps command definition.
+# $ARG1 is the SNMP community string and $ARG2 is the sample interval in seconds.
+define command{
+        command_name    check_snmp_f5ltm_tps
+        command_line    $USER1$/check_snmp_f5ltm_tps $HOSTADDRESS$ $ARG1$ $ARG2$
+        }
