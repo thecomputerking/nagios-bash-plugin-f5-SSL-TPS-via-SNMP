@@ -1,0 +1,90 @@
+#!/bin/bash
+# Note this command assumes that Native SSL connections will be GT Compat SSL connections.
+# Copyright Charles R. Tompkins 8/19/2013 GNU GPL v3
+
+# snmp-enabled ltm
+MYHOST=$1;
+
+# community string
+COMMUNITY=$2;
+
+# sample interval
+SLEEP=$3;
+
+# temporary file location
+TMP_FILE=/var/tmp/check_snmp_f5tps.$$;
+NUMER="0";
+SSL_TPS="0";
+
+#oids to measure
+NATIVE_CMD="snmpget -v2c -c ${COMMUNITY} -Ov ${MYHOST} .1.3.6.1.4.1.3375.2.1.1.2.9.6.0";
+COMPAT_CMD="snmpget -v2c -c ${COMMUNITY} -Ov ${MYHOST} .1.3.6.1.4.1.3375.2.1.1.2.9.9.0";
+
+NATIVE_SSLCNT=$(eval "$NATIVE_CMD" |cut -f2 -d" ");
+COMPAT_SSLCNT=$(eval "$COMPAT_CMD" |cut -f2 -d" ");
+
+touch ${TMP_FILE};
+echo -n "$NATIVE_SSLCNT,$COMPAT_SSLCNT,$(date +%s)," > ${TMP_FILE};
+
+#debug#
+#echo "yes file has data $(cat $tmpfile)";
+sleep ${SLEEP};
+
+#need to remeasure after waiting
+NATIVE_SSLCNT=$(eval "$NATIVE_CMD" |cut -f2 -d" ");
+COMPAT_SSLCNT=$(eval "$COMPAT_CMD" |cut -f2 -d" ");
+
+echo -n "$NATIVE_SSLCNT,$COMPAT_SSLCNT,$(date +%s)" >> ${TMP_FILE};
+
+#debug#
+#echo "temp again $(cat $tmpfile)";
+
+# init the arrays
+declare -a A_SSLTPS;
+declare -a A_RESULTS;
+A_SSLTPS=();
+A_RESULTS=();
+
+IFS=$',';
+read -r -a A_SSLTPS < $TMP_FILE;
+rm ${TMP_FILE};
+
+#math time
+for ((i=0; i<=2; i++))
+ do
+        A_RESULT[$i]=`expr $(echo ${A_SSLTPS[3+$i]}) - $(echo ${A_SSLTPS[$i]})`;
+ done
+
+NUMER=`expr $(echo ${A_RESULT[0]}) + $(echo ${A_RESULT[1]})`;
+#debug echo "numerator: $numer";
+
+SSL_TPS=`expr $NUMER / $(echo ${A_RESULT[2]})`;
+
+#debug#
+#echo "TPS: $SSL_TPS";
+
+# prepare a nagios return code: 0-OK, 1-WARN, 2-CRIT, 3-FAIL
+if [ -z $SSL_TPS ]; then
+   NAGRETURN=3
+   echo "SSL TPS measurement failed"
+   exit $NAGRETURN
+elif [ 0 -le "$SSL_TPS" ] && [ "$SSL_TPS" -le 749 ];
+then
+   NAGRETURN=0
+elif [ 750 -le "$SSL_TPS" ] && [ "$SSL_TPS" -le 999 ];
+then
+   NAGRETURN=1
+elif [ 1000 -le "$SSL_TPS" ] && [ "$SSL_TPS" -le 99999 ];
+then
+   NAGRETURN=2
+else
+   NAGRETURN=3
+fi
+
+echo "SSL TPS: $SSL_TPS";
+
+#debug
+#echo "$NAGRETURN";
+
+exit $NAGRETURN
+#EOF
